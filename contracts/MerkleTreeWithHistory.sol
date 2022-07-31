@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+//This contract code is adapted from Tornado Cash's implementation
 pragma solidity ^0.8.0;
 
 interface IHasher {

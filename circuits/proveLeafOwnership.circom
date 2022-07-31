@@ -25,6 +25,7 @@ template CommitmentHasher() {
 
 
 // Verifies that H(sk||r) = L and L is in the tree
+//This proof is used to verify that a user is a human once their leaf has been added to a server
 template ProofOfMembership(levels) {
     signal input root;
     signal input secret;
