@@ -1,81 +1,89 @@
+// code inspired by the mechanism of TornadoCash, but not the goals of TornadoCash
 // SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
 import "./MerkleTreeWithHistory.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-
-contract treeManager is MerkleTreeWithHistory, ReentrancyGuard {
+contract KYCCredentialManager is MerkleTreeWithHistory, ReentrancyGuard {
     address public publickey = 0xB8D8c2FC9dc30CC59cc827f1c61416D8344dA4e9;
-    event leaf_added(bytes32 leaf, uint index);
+    event kyc_completed(bytes32 leaf, uint256 index);
 
     /**
     @dev The constructor
     @param _hasher the address of MiMC hash contract
     @param _merkleTreeHeight the height of deposits' Merkle Tree
     */
-    constructor(
-        IHasher _hasher,
-        uint32 _merkleTreeHeight
-    ) MerkleTreeWithHistory(_merkleTreeHeight, _hasher) {}
+    constructor(IHasher _hasher, uint32 _merkleTreeHeight)
+        MerkleTreeWithHistory(_merkleTreeHeight, _hasher)
+    {}
+
     mapping(bytes32 => bool) public registered_users;
-    function register_notebook(
-            bytes32 sha_leaf,
-            bytes32 leaf,
-            uint8 v, 
-            bytes32 r, 
-            bytes32 s 
-            )  external payable nonReentrant {
-        address signer = ecrecover(sha_leaf, v, r, s);
-        
-        require(sha_leaf == keccak256(abi.encodePacked(leaf)), "sha hash not good");
-        //uncomment next line once ecdsa done
-        require(signer == publickey, "Invalid signature");
+
+    function add_kyc_credential(
+        bytes32 leaf,
+        bytes memory sig
+    ) external payable nonReentrant {
+        require(ECDSA.recover(keccak256(abi.encodePacked(leaf)), sig) == publickey, "Invalid signature");
         require(registered_users[leaf] == false);
-        uint index = _insert(leaf);
+        uint256 index = _insert(leaf);
         registered_users[leaf] = true;
-        emit leaf_added(leaf, index);
+        emit kyc_completed(leaf, index);
         //addleaf to tree
     }
-
 }
 
 pragma solidity ^0.8.0;
 
 contract sybilResistantProtocol {
-    mapping(uint => bool) public registered_users;
+    mapping(uint256 => bool) public registered_users;
     address verifier_address;
     address tree_address;
+
     constructor(address verifier, address tree) {
         verifier_address = verifier;
         tree_address = tree;
     }
-    event user_verified(uint256 null_hash, address user);
-    function create_account(uint[2] memory a,
-            uint[2] memory b_a,
-            uint[2] memory b_b,
-            uint[2] memory c,
-            uint[3] memory input) external payable returns (bool) {
+
+    function create_account(
+        uint256[2] memory a,
+        uint256[2][2] memory b,
+        uint256[2] memory c,
+        uint256[4] memory input
+    ) external payable returns (bool) {
         Verifier ver = Verifier(verifier_address);
         treeManager tree = treeManager(tree_address);
         //check correct root and protocol_address
-        require(input[1] == uint(tree.getRoot()), "root not good");
-        require(input[2] == uint(uint160(address(this))), "protocol address not good");
-        require(ver.verifyProof(a, [b_a, b_b], c, input), "proof not good");
-        if (registered_users[input[1]] == false) {
-            registered_users[input[1]] = true;
-            emit user_verified(input[1], msg.sender);
+        require(input[0] == uint256(tree.getRoot()), "wrong root");
+        require(
+            input[2] == uint256(uint160(address(this))),
+            "protocol address wrong"
+        );
+
+        require(ver.verifyProof(a, b, c, input));
+        if (registered_users[input[3]] == false) {
+            registered_users[input[3]] == true;
             return true;
         }
         return false;
     }
 }
-
-
-
-
-
-pragma solidity ^0.8.0;
+//
+// Copyright 2017 Christian Reitwiessner
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+// 2019 OKIMS
+//      ported to solidity 0.6
+//      fixed linter warnings
+//      added requiere error messages
+//
+//
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.6.11;
 library Pairing {
     struct G1Point {
         uint X;
@@ -258,31 +266,41 @@ contract Verifier {
              8495653923123431417604973247489272438418190587263600148770280649306958101930]
         );
         vk.delta2 = Pairing.G2Point(
-            [6003523318434119428245150875987962164768095132008702071385396561354711286890,
-             2492719973361699346056634856355620347544178091132938235842511323118373639958],
-            [13971890624078400224822393792453493434293839452360834773945293533150430390061,
-             9660688886591103033544422797977664906499164080057178780043857717777140701271]
+            [21002804475945678425614393718859419047100267460955839051465482179063256033434,
+             14167087432972455766213585080365989011361055979419968224450875529745916048023],
+            [2825048215520823814929163204321582793989722468353078629722918886388745326351,
+             7756998093237452429899638226831098583696714930685347817421600321855173972761]
         );
-        vk.IC = new Pairing.G1Point[](4);
+        vk.IC = new Pairing.G1Point[](6);
         
         vk.IC[0] = Pairing.G1Point( 
-            12966829901769455118495942241165093518503791286464078129690258171387720456216,
-            19735300741870872216093632305817563778267516244531493358534123273657763855100
+            16456048820344123697238748322301734597418482392484014465257514958647212243339,
+            13941635249948851282975923836394896703940815958775805587441553988288643031556
         );                                      
         
         vk.IC[1] = Pairing.G1Point( 
-            7477258017710956521089488454463298865801298252305219676156508648348625187781,
-            9172416848242669045837589718242167268486295695577160784519010393232224504427
+            7741714278459365107503736994747271026774202804728567039824553313980406267933,
+            19915768260739675123521860639078921887676071374427217684906120494059325074290
         );                                      
         
         vk.IC[2] = Pairing.G1Point( 
-            6306297963704372897511852015557861538996825253435885833854418366202682777376,
-            8574759795692698384555967911396431612347354118645558054698145614388576883617
+            3689475004874368011859344526147663888172763060113124905083676094122773182177,
+            8677572882027513783313744839319155965954204109880099487606255077367038809375
         );                                      
         
         vk.IC[3] = Pairing.G1Point( 
-            9213980401412027237268810078267270363160863203538339350751706269474965030709,
-            2688714919907941143967943339360170140432953890508692625436359729016270783232
+            7597564911738565237016380121618143805593055935952969048752266293806838033124,
+            18235200454383073707499806722364775318213897117102677148638836463565031298347
+        );                                      
+        
+        vk.IC[4] = Pairing.G1Point( 
+            217111322986285902819733471247624932605494665067141204253574915451065638973,
+            19611426899387335453995760122715909666670391321740252312435121971602301264720
+        );                                      
+        
+        vk.IC[5] = Pairing.G1Point( 
+            16524101081997430088453550179885921218853236834813497802705601238154190449486,
+            20944101089098917191845133554598093683408144964984831944446696065378708406542
         );                                      
         
     }
@@ -306,13 +324,12 @@ contract Verifier {
         return 0;
     }
     /// @return r  bool true if proof is valid
-    event return_val(bool);
     function verifyProof(
             uint[2] memory a,
             uint[2][2] memory b,
             uint[2] memory c,
-            uint[3] memory input
-        ) public returns (bool r) {
+            uint[5] memory input
+        ) public view returns (bool r) {
         Proof memory proof;
         proof.A = Pairing.G1Point(a[0], a[1]);
         proof.B = Pairing.G2Point([b[0][0], b[0][1]], [b[1][0], b[1][1]]);
@@ -322,14 +339,9 @@ contract Verifier {
             inputValues[i] = input[i];
         }
         if (verify(inputValues, proof) == 0) {
-            emit return_val(true);
             return true;
         } else {
-            emit return_val(false);
             return false;
         }
     }
 }
-
-
-
